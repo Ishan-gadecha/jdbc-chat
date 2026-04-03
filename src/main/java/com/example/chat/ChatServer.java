@@ -218,8 +218,10 @@ public final class ChatServer {
             sendPlain(exchange, 400, "Malformed payload");
             return;
         }
-        if (payload == null || isBlank(payload.author) || isBlank(payload.password) || isBlank(payload.to) || isBlank(payload.text)) {
-            sendPlain(exchange, 400, "Author, password, recipient, and text are required");
+        boolean hasText = payload != null && !isBlank(payload.text);
+        boolean hasMedia = payload != null && !isBlank(payload.mediaData);
+        if (payload == null || isBlank(payload.author) || isBlank(payload.password) || isBlank(payload.to) || (!hasText && !hasMedia)) {
+            sendPlain(exchange, 400, "Author, password, recipient, and text or media are required");
             return;
         }
         try {
@@ -231,7 +233,14 @@ public final class ChatServer {
             }
             dao.addContact(author, recipient);
             dao.addContact(recipient, author);
-            dao.storeDirectMessage(author, recipient, payload.text.trim());
+            String text = payload.text == null ? "" : payload.text.trim();
+            String mediaMime = payload.mediaMime == null ? null : payload.mediaMime.trim();
+            String mediaData = payload.mediaData == null ? null : payload.mediaData.trim();
+            if (mediaData != null && mediaData.length() > 12_000_000) {
+                sendPlain(exchange, 413, "Media is too large");
+                return;
+            }
+            dao.storeDirectMessage(author, recipient, text, mediaMime, mediaData);
             List<Message> latest = dao.fetchConversation(author, recipient, 30);
             sendJson(exchange, messagesToJson(latest));
         } catch (Exception ex) {
@@ -471,6 +480,12 @@ public final class ChatServer {
             json.addProperty("author", message.getAuthor());
             json.addProperty("recipient", message.getRecipient());
             json.addProperty("text", message.getText());
+            if (!isBlank(message.getMediaMime())) {
+                json.addProperty("mediaMime", message.getMediaMime());
+            }
+            if (!isBlank(message.getMediaData())) {
+                json.addProperty("mediaData", message.getMediaData());
+            }
             json.addProperty("timestamp", message.getTimestamp().toString());
             array.add(json);
         }
@@ -561,6 +576,8 @@ public final class ChatServer {
         String password;
         String to;
         String text;
+        String mediaMime;
+        String mediaData;
     }
 
     private static final class AddContactPayload {

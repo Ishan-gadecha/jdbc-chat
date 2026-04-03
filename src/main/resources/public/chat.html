@@ -290,6 +290,41 @@
             cursor: pointer;
         }
 
+        .attachment-row {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            margin-top: 0.5rem;
+        }
+
+        .attachment-row input[type="file"] {
+            flex: 1;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 0.45rem;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .media-preview {
+            margin-top: 0.4rem;
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.75);
+        }
+
+        .message-media {
+            margin-top: 0.5rem;
+            border-radius: 12px;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .message-media img,
+        .message-media video {
+            display: block;
+            max-width: min(360px, 100%);
+            border-radius: 12px;
+        }
+
         .message-feedback {
             min-height: 1.1rem;
             font-size: 0.85rem;
@@ -378,6 +413,11 @@
             <input id="messageInput" type="text" placeholder="Write a message" autocomplete="off" required />
             <button type="submit">Send</button>
         </form>
+        <div class="attachment-row">
+            <input id="mediaInput" type="file" accept="image/*,video/*" />
+            <button id="clearMediaButton" type="button" class="ghost">Clear media</button>
+        </div>
+        <p class="media-preview" id="mediaStatus">No attachment selected.</p>
         <p class="message-feedback" id="sendFeedback"></p>
     </section>
 </div>
@@ -419,7 +459,13 @@
     const searchStatus = document.getElementById('searchStatus');
     const ownList = document.getElementById('ownList');
     const ownStatus = document.getElementById('ownStatus');
+    const mediaInput = document.getElementById('mediaInput');
+    const clearMediaButton = document.getElementById('clearMediaButton');
+    const mediaStatus = document.getElementById('mediaStatus');
     let selectedContact = '';
+    let pendingMediaData = null;
+    let pendingMediaMime = null;
+    const MAX_MEDIA_SIZE = 8 * 1024 * 1024;
 
     // Initialize UI
     userDisplay.textContent = '👤 ' + handle;
@@ -458,6 +504,33 @@
         } catch (error) {
             sendFeedback.textContent = error.message;
         }
+    });
+
+    mediaInput.addEventListener('change', async () => {
+        const file = mediaInput.files?.[0];
+        if (!file) {
+            pendingMediaData = null;
+            pendingMediaMime = null;
+            mediaStatus.textContent = 'No attachment selected.';
+            return;
+        }
+        if (file.size > MAX_MEDIA_SIZE) {
+            mediaInput.value = '';
+            pendingMediaData = null;
+            pendingMediaMime = null;
+            mediaStatus.textContent = 'Attachment too large. Max 8MB.';
+            return;
+        }
+        pendingMediaMime = file.type;
+        pendingMediaData = await fileToDataUrl(file);
+        mediaStatus.textContent = `Attached: ${file.name}`;
+    });
+
+    clearMediaButton.addEventListener('click', () => {
+        mediaInput.value = '';
+        pendingMediaData = null;
+        pendingMediaMime = null;
+        mediaStatus.textContent = 'No attachment selected.';
     });
 
     // Search user handler
@@ -585,8 +658,19 @@
         await fetchJson(API.send, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({author: handle, password: password, to: selectedContact, text})
+            body: JSON.stringify({
+                author: handle,
+                password: password,
+                to: selectedContact,
+                text,
+                mediaMime: pendingMediaMime,
+                mediaData: pendingMediaData
+            })
         });
+        mediaInput.value = '';
+        pendingMediaData = null;
+        pendingMediaMime = null;
+        mediaStatus.textContent = 'No attachment selected.';
     }
 
     async function deleteMessage(messageId) {
@@ -618,6 +702,31 @@
             meta.textContent = `${msg.author} • ${formatTimestamp(msg.timestamp)}`;
             const body = document.createElement('div');
             body.textContent = msg.text;
+
+            if (msg.mediaData) {
+                const mediaWrap = document.createElement('div');
+                mediaWrap.className = 'message-media';
+                if ((msg.mediaMime || '').startsWith('image/')) {
+                    const img = document.createElement('img');
+                    img.src = msg.mediaData;
+                    img.alt = 'Shared image';
+                    mediaWrap.appendChild(img);
+                } else if ((msg.mediaMime || '').startsWith('video/')) {
+                    const video = document.createElement('video');
+                    video.src = msg.mediaData;
+                    video.controls = true;
+                    video.preload = 'metadata';
+                    mediaWrap.appendChild(video);
+                } else {
+                    const link = document.createElement('a');
+                    link.href = msg.mediaData;
+                    link.textContent = 'Open attachment';
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    mediaWrap.appendChild(link);
+                }
+                article.appendChild(mediaWrap);
+            }
             
             const footer = document.createElement('div');
             footer.style.display = 'flex';
@@ -683,10 +792,33 @@
         }
     }
 
+    function fileToDataUrl(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result));
+            reader.onerror = () => reject(new Error('Unable to read file.'));
+            reader.readAsDataURL(file);
+        });
+    }
+
     // Load initial data
     refreshContacts();
     refreshOwnPosts();
     fetchRecent();
+
+    setInterval(() => {
+        if (!selectedContact) {
+            return;
+        }
+        fetchRecent();
+        refreshOwnPosts();
+    }, 2500);
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && selectedContact) {
+            fetchRecent();
+        }
+    });
 </script>
 </body>
 </html>

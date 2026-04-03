@@ -1,5 +1,9 @@
 package com.example.chat;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -12,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class ChatDao {
+    private static final Gson GSON = new Gson();
     private static final String TABLE_SETUP = "CREATE TABLE IF NOT EXISTS messages ("
             + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
             + "author TEXT NOT NULL,"
@@ -135,11 +140,16 @@ public final class ChatDao {
     }
 
     public void storeMessage(String author, String payload) throws SQLException {
-        storeDirectMessage(author, null, payload);
+        storeDirectMessage(author, null, payload, null, null);
     }
 
     public void storeDirectMessage(String author, String recipient, String payload) throws SQLException {
+        storeDirectMessage(author, recipient, payload, null, null);
+    }
+
+    public void storeDirectMessage(String author, String recipient, String text, String mediaMime, String mediaData) throws SQLException {
         String insert = "INSERT INTO messages (author, recipient, payload, created_at) VALUES (?, ?, ?, ?)";
+        String payload = encodePayload(text, mediaMime, mediaData);
         try (Connection connection = connect(); PreparedStatement statement = connection.prepareStatement(insert)) {
             statement.setString(1, author);
             statement.setString(2, recipient);
@@ -267,13 +277,59 @@ public final class ChatDao {
     private List<Message> toMessages(ResultSet rs) throws SQLException {
         List<Message> messages = new ArrayList<>();
         while (rs.next()) {
+            PayloadParts parts = decodePayload(rs.getString("payload"));
             messages.add(new Message(
                     rs.getLong("id"),
                     rs.getString("author"),
                     rs.getString("recipient"),
-                    rs.getString("payload"),
+                    parts.text,
+                    parts.mediaMime,
+                    parts.mediaData,
                     LocalDateTime.parse(rs.getString("created_at"))));
         }
         return messages;
+    }
+
+    private String encodePayload(String text, String mediaMime, String mediaData) {
+        boolean hasMedia = mediaData != null && !mediaData.isBlank();
+        if (!hasMedia) {
+            return text == null ? "" : text;
+        }
+        JsonObject payload = new JsonObject();
+        payload.addProperty("text", text == null ? "" : text);
+        payload.addProperty("mediaMime", mediaMime == null ? "" : mediaMime);
+        payload.addProperty("mediaData", mediaData);
+        payload.addProperty("structured", true);
+        return GSON.toJson(payload);
+    }
+
+    private PayloadParts decodePayload(String payload) {
+        if (payload == null || payload.isBlank()) {
+            return new PayloadParts("", null, null);
+        }
+        try {
+            JsonObject obj = JsonParser.parseString(payload).getAsJsonObject();
+            if (!obj.has("structured") || !obj.get("structured").getAsBoolean()) {
+                return new PayloadParts(payload, null, null);
+            }
+            String text = obj.has("text") ? obj.get("text").getAsString() : "";
+            String mediaMime = obj.has("mediaMime") ? obj.get("mediaMime").getAsString() : null;
+            String mediaData = obj.has("mediaData") ? obj.get("mediaData").getAsString() : null;
+            return new PayloadParts(text, mediaMime, mediaData);
+        } catch (Exception ignored) {
+            return new PayloadParts(payload, null, null);
+        }
+    }
+
+    private static final class PayloadParts {
+        private final String text;
+        private final String mediaMime;
+        private final String mediaData;
+
+        private PayloadParts(String text, String mediaMime, String mediaData) {
+            this.text = text;
+            this.mediaMime = mediaMime;
+            this.mediaData = mediaData;
+        }
     }
 }

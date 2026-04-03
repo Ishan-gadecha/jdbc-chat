@@ -422,9 +422,26 @@
     </section>
 </div>
 <script>
+    function clearAuthStorage() {
+        sessionStorage.removeItem('handle');
+        sessionStorage.removeItem('password');
+        sessionStorage.removeItem('isAdmin');
+        sessionStorage.removeItem('adminToken');
+        localStorage.removeItem('handle');
+        localStorage.removeItem('password');
+        localStorage.removeItem('isAdmin');
+        localStorage.removeItem('adminToken');
+    }
+
+    const navigationEntry = performance.getEntriesByType('navigation')[0];
+    if (navigationEntry && navigationEntry.type === 'reload') {
+        clearAuthStorage();
+        window.location.href = '/login.html';
+    }
+
     // Check if user is logged in
-    const handle = localStorage.getItem('handle');
-    const password = localStorage.getItem('password');
+    const handle = sessionStorage.getItem('handle');
+    const password = sessionStorage.getItem('password');
 
     if (!handle || !password) {
         window.location.href = '/login.html';
@@ -476,10 +493,7 @@
 
     // Logout handler
     logoutButton.addEventListener('click', () => {
-        localStorage.removeItem('handle');
-        localStorage.removeItem('password');
-        localStorage.removeItem('isAdmin');
-        localStorage.removeItem('adminToken');
+        clearAuthStorage();
         window.location.href = '/login.html';
     });
 

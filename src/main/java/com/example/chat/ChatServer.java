@@ -33,7 +33,7 @@ public final class ChatServer {
     }
 
     public static void main(String[] args) {
-        Path store = Paths.get(System.getProperty("user.home"), ".advanced-chat", "chat.db");
+        Path store = StoragePaths.resolveDbPath();
         int port = resolvePort();
         try {
             Files.createDirectories(store.getParent());
@@ -56,6 +56,7 @@ public final class ChatServer {
             server.createContext("/api/admin/master", exchange -> handleAdminMaster(exchange, dao));
             server.start();
             System.out.println("Chat server is listening on port " + port);
+            System.out.println("Database path: " + store.toAbsolutePath());
         } catch (Exception ex) {
             System.err.println("Failed to start server: " + ex.getMessage());
             ex.printStackTrace();

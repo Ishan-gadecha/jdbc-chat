@@ -3,7 +3,6 @@ package com.example.chat;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -23,7 +22,7 @@ public final class ChatApp {
     }
 
     public static void main(String[] args) {
-        Path store = Paths.get(System.getProperty("user.home"), ".advanced-chat", "chat.db");
+        Path store = StoragePaths.resolveDbPath();
         System.out.println("Starting JDBC-backed chat client...");
         try {
             new ChatApp(store).run();

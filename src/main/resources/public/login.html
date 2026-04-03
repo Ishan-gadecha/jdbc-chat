@@ -277,15 +277,19 @@
             const data = await response.json();
             showStatus(data.message, 'success');
 
-            // Persist auth so refresh/close does not force login.
-            localStorage.setItem('handle', handle);
-            localStorage.setItem('password', password);
+            // Persist auth only for the current tab session.
+            sessionStorage.setItem('handle', handle);
+            sessionStorage.setItem('password', password);
+            localStorage.removeItem('handle');
+            localStorage.removeItem('password');
             if (data.admin === true && data.adminToken) {
-                localStorage.setItem('isAdmin', 'true');
-                localStorage.setItem('adminToken', data.adminToken);
-            } else {
+                sessionStorage.setItem('isAdmin', 'true');
+                sessionStorage.setItem('adminToken', data.adminToken);
                 localStorage.removeItem('isAdmin');
                 localStorage.removeItem('adminToken');
+            } else {
+                sessionStorage.removeItem('isAdmin');
+                sessionStorage.removeItem('adminToken');
             }
 
             setTimeout(() => {
@@ -369,7 +373,7 @@
     }
 
     // Check if already logged in
-    if (localStorage.getItem('handle') && localStorage.getItem('password')) {
+    if (sessionStorage.getItem('handle') && sessionStorage.getItem('password')) {
         window.location.href = '/chat.html';
     }
 </script>

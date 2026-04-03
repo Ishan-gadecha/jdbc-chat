@@ -39,7 +39,7 @@ public final class ChatServer {
             dao.initSchema();
             HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
             server.setExecutor(Executors.newFixedThreadPool(4));
-            server.createContext("/", new StaticHandler("/public/index.html", "text/html; charset=UTF-8"));
+            server.createContext("/", ChatServer::handleStatic);
             server.createContext("/api/messages/recent", exchange -> handleRead(exchange, (params, limit) -> dao.fetchRecent(limit), 10));
             server.createContext("/api/messages/search", exchange -> handleRead(exchange, (params, limit) -> dao.fetchByAuthor(params.getOrDefault("prefix", ""), limit), 15));
             server.createContext("/api/messages/my", exchange -> handleRead(exchange, (params, limit) -> dao.fetchByAuthor(params.getOrDefault("author", ""), limit), 5));
@@ -182,30 +182,47 @@ public final class ChatServer {
         }
     }
 
-    private static class StaticHandler implements HttpHandler {
-        private final String resourcePath;
-        private final String contentType;
-
-        StaticHandler(String resourcePath, String contentType) {
-            this.resourcePath = resourcePath;
-            this.contentType = contentType;
+    private static void handleStatic(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendPlain(exchange, 405, "Only GET allowed");
+            return;
         }
 
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            if (!"GET".equals(exchange.getRequestMethod())) {
-                sendPlain(exchange, 405, "Only GET allowed");
+        String path = exchange.getRequestURI().getPath();
+        if (path == null || path.isBlank() || "/".equals(path)) {
+            path = "/login.html";
+        }
+
+        if (path.contains("..")) {
+            sendPlain(exchange, 400, "Invalid path");
+            return;
+        }
+
+        String resourcePath = "/public" + path;
+        try (InputStream resource = ChatServer.class.getResourceAsStream(resourcePath)) {
+            if (resource == null) {
+                sendPlain(exchange, 404, "Not found");
                 return;
             }
-            try (InputStream resource = ChatServer.class.getResourceAsStream(resourcePath)) {
-                if (resource == null) {
-                    sendPlain(exchange, 404, "Not found");
-                    return;
-                }
-                byte[] bytes = resource.readAllBytes();
-                sendResponse(exchange, 200, contentType, bytes);
-            }
+            byte[] bytes = resource.readAllBytes();
+            sendResponse(exchange, 200, contentType(path), bytes);
         }
+    }
+
+    private static String contentType(String path) {
+        if (path.endsWith(".html")) {
+            return "text/html; charset=UTF-8";
+        }
+        if (path.endsWith(".css")) {
+            return "text/css; charset=UTF-8";
+        }
+        if (path.endsWith(".js")) {
+            return "application/javascript; charset=UTF-8";
+        }
+        if (path.endsWith(".json")) {
+            return "application/json; charset=UTF-8";
+        }
+        return "text/plain; charset=UTF-8";
     }
 
     @FunctionalInterface

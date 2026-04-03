@@ -5,7 +5,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
 import java.io.ByteArrayOutputStream;
@@ -21,11 +20,14 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 
 public final class ChatServer {
     private static final int DEFAULT_PORT = 8080;
     private static final Gson GSON = new Gson();
+    private static final Map<String, String> ADMIN_TOKENS = new ConcurrentHashMap<>();
 
     private ChatServer() {
     }
@@ -40,10 +42,17 @@ public final class ChatServer {
             HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
             server.setExecutor(Executors.newFixedThreadPool(4));
             server.createContext("/", ChatServer::handleStatic);
+            server.createContext("/api/login", exchange -> handleLogin(exchange, dao));
+            server.createContext("/api/recovery/question", exchange -> handleRecoveryQuestion(exchange, dao));
+            server.createContext("/api/recovery/reset", exchange -> handleRecoveryReset(exchange, dao));
             server.createContext("/api/messages/recent", exchange -> handleRead(exchange, (params, limit) -> dao.fetchRecent(limit), 10));
             server.createContext("/api/messages/search", exchange -> handleRead(exchange, (params, limit) -> dao.fetchByAuthor(params.getOrDefault("prefix", ""), limit), 15));
             server.createContext("/api/messages/my", exchange -> handleRead(exchange, (params, limit) -> dao.fetchByAuthor(params.getOrDefault("author", ""), limit), 5));
             server.createContext("/api/messages/send", exchange -> handleSend(exchange, dao));
+            server.createContext("/api/messages/delete", exchange -> handleDeleteMessage(exchange, dao));
+            server.createContext("/api/contacts", exchange -> handleContacts(exchange, dao));
+            server.createContext("/api/users/search", exchange -> handleUserSearch(exchange, dao));
+            server.createContext("/api/admin/master", exchange -> handleAdminMaster(exchange, dao));
             server.start();
             System.out.println("Chat server is listening on port " + port);
         } catch (Exception ex) {
@@ -94,6 +103,121 @@ public final class ChatServer {
         }
     }
 
+    private static void handleLogin(HttpExchange exchange, ChatDao dao) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendPlain(exchange, 405, "Only POST allowed");
+            return;
+        }
+
+        LoginPayload payload;
+        try {
+            payload = GSON.fromJson(readBody(exchange), LoginPayload.class);
+        } catch (Exception ex) {
+            sendPlain(exchange, 400, "Malformed payload");
+            return;
+        }
+
+        if (payload == null || isBlank(payload.handle) || isBlank(payload.password)) {
+            sendPlain(exchange, 400, "Both handle and password are required");
+            return;
+        }
+
+        String handle = payload.handle.trim();
+        String password = payload.password.trim();
+        try {
+            boolean exists = dao.userExists(handle);
+            if (!exists) {
+                if (isBlank(payload.recoveryQuestion) || isBlank(payload.recoveryAnswer)) {
+                    sendPlain(exchange, 400, "Recovery question and answer are required for new account");
+                    return;
+                }
+                dao.registerUser(handle, password, payload.recoveryQuestion.trim(), payload.recoveryAnswer.trim());
+            } else if (!dao.validateLogin(handle, password)) {
+                sendPlain(exchange, 401, "Invalid username or password");
+                return;
+            }
+
+            boolean admin = dao.isAdmin(handle);
+            JsonObject response = new JsonObject();
+            response.addProperty("message", "Signed in successfully");
+            response.addProperty("admin", admin);
+            if (admin) {
+                String token = UUID.randomUUID().toString();
+                ADMIN_TOKENS.put(token, handle);
+                response.addProperty("adminToken", token);
+            }
+            sendJsonObject(exchange, response);
+        } catch (Exception ex) {
+            sendPlain(exchange, 500, "Login failed");
+        }
+    }
+
+    private static void handleRecoveryQuestion(HttpExchange exchange, ChatDao dao) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendPlain(exchange, 405, "Only POST allowed");
+            return;
+        }
+
+        RecoveryQuestionPayload payload;
+        try {
+            payload = GSON.fromJson(readBody(exchange), RecoveryQuestionPayload.class);
+        } catch (Exception ex) {
+            sendPlain(exchange, 400, "Malformed payload");
+            return;
+        }
+
+        if (payload == null || isBlank(payload.handle)) {
+            sendPlain(exchange, 400, "Username is required");
+            return;
+        }
+
+        try {
+            String question = dao.recoveryQuestion(payload.handle.trim());
+            if (question == null) {
+                sendPlain(exchange, 404, "User not found");
+                return;
+            }
+            JsonObject response = new JsonObject();
+            response.addProperty("question", question);
+            sendJsonObject(exchange, response);
+        } catch (Exception ex) {
+            sendPlain(exchange, 500, "Unable to fetch recovery question");
+        }
+    }
+
+    private static void handleRecoveryReset(HttpExchange exchange, ChatDao dao) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendPlain(exchange, 405, "Only POST allowed");
+            return;
+        }
+
+        RecoveryResetPayload payload;
+        try {
+            payload = GSON.fromJson(readBody(exchange), RecoveryResetPayload.class);
+        } catch (Exception ex) {
+            sendPlain(exchange, 400, "Malformed payload");
+            return;
+        }
+
+        if (payload == null || isBlank(payload.handle) || isBlank(payload.answer) || isBlank(payload.newPassword)) {
+            sendPlain(exchange, 400, "Username, answer, and new password are required");
+            return;
+        }
+
+        try {
+            boolean changed = dao.resetPassword(payload.handle.trim(), payload.answer.trim(), payload.newPassword.trim());
+            if (!changed) {
+                sendPlain(exchange, 401, "Invalid recovery answer or user not found");
+                return;
+            }
+            JsonObject response = new JsonObject();
+            response.addProperty("message", "Password reset successful");
+            sendJsonObject(exchange, response);
+        } catch (Exception ex) {
+            sendPlain(exchange, 500, "Unable to reset password");
+        }
+    }
+
     private static void handleSend(HttpExchange exchange, ChatDao dao) throws IOException {
         if (!"POST".equals(exchange.getRequestMethod())) {
             sendPlain(exchange, 405, "Only POST allowed");
@@ -107,16 +231,133 @@ public final class ChatServer {
             sendPlain(exchange, 400, "Malformed payload");
             return;
         }
-        if (payload == null || payload.author == null || payload.author.isBlank() || payload.text == null || payload.text.isBlank()) {
-            sendPlain(exchange, 400, "Author and text are required");
+        if (payload == null || isBlank(payload.author) || isBlank(payload.password) || isBlank(payload.text)) {
+            sendPlain(exchange, 400, "Author, password, and text are required");
             return;
         }
         try {
-            dao.storeMessage(payload.author.trim(), payload.text.trim());
-            List<Message> latest = dao.fetchByAuthor(payload.author.trim(), 1);
+            String author = payload.author.trim();
+            if (!dao.validateLogin(author, payload.password.trim())) {
+                sendPlain(exchange, 401, "Invalid username or password");
+                return;
+            }
+            dao.storeMessage(author, payload.text.trim());
+            List<Message> latest = dao.fetchByAuthor(author, 1);
             sendJson(exchange, messagesToJson(latest));
         } catch (Exception ex) {
             sendPlain(exchange, 500, "Unable to store message");
+        }
+    }
+
+    private static void handleDeleteMessage(HttpExchange exchange, ChatDao dao) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendPlain(exchange, 405, "Only POST allowed");
+            return;
+        }
+
+        DeletePayload payload;
+        try {
+            payload = GSON.fromJson(readBody(exchange), DeletePayload.class);
+        } catch (Exception ex) {
+            sendPlain(exchange, 400, "Malformed payload");
+            return;
+        }
+
+        if (payload == null || payload.messageId == null || isBlank(payload.handle)) {
+            sendPlain(exchange, 400, "messageId and handle are required");
+            return;
+        }
+
+        try {
+            boolean deleted = dao.deleteMessage(payload.messageId, payload.handle.trim());
+            if (!deleted) {
+                sendPlain(exchange, 404, "Message not found");
+                return;
+            }
+            JsonObject response = new JsonObject();
+            response.addProperty("deleted", true);
+            sendJsonObject(exchange, response);
+        } catch (Exception ex) {
+            sendPlain(exchange, 500, "Unable to delete message");
+        }
+    }
+
+    private static void handleContacts(HttpExchange exchange, ChatDao dao) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendPlain(exchange, 405, "Only GET allowed");
+            return;
+        }
+
+        Map<String, String> params = queryParams(exchange);
+        String handle = params.getOrDefault("handle", "").trim();
+        if (handle.isEmpty()) {
+            sendPlain(exchange, 400, "handle is required");
+            return;
+        }
+
+        try {
+            List<String> contacts = dao.fetchContacts(handle);
+            JsonArray out = new JsonArray();
+            for (String contact : contacts) {
+                out.add(contact);
+            }
+            sendJson(exchange, out);
+        } catch (Exception ex) {
+            sendPlain(exchange, 500, "Unable to load contacts");
+        }
+    }
+
+    private static void handleUserSearch(HttpExchange exchange, ChatDao dao) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendPlain(exchange, 405, "Only GET allowed");
+            return;
+        }
+
+        Map<String, String> params = queryParams(exchange);
+        String prefix = params.getOrDefault("handle", "").trim();
+        if (prefix.isEmpty()) {
+            sendPlain(exchange, 400, "handle is required");
+            return;
+        }
+
+        try {
+            List<String> users = dao.findUsersByPrefix(prefix, 10);
+            JsonObject response = new JsonObject();
+            response.addProperty("exists", users.stream().anyMatch(u -> u.equals(prefix)));
+            sendJsonObject(exchange, response);
+        } catch (Exception ex) {
+            sendPlain(exchange, 500, "Unable to search users");
+        }
+    }
+
+    private static void handleAdminMaster(HttpExchange exchange, ChatDao dao) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendPlain(exchange, 405, "Only GET allowed");
+            return;
+        }
+
+        Map<String, String> params = queryParams(exchange);
+        String token = params.getOrDefault("token", "").trim();
+        if (token.isEmpty() || !ADMIN_TOKENS.containsKey(token)) {
+            sendPlain(exchange, 401, "Unauthorized");
+            return;
+        }
+
+        int limit = requestedLimit(params, 300);
+        try {
+            JsonObject response = new JsonObject();
+
+            JsonArray usersJson = new JsonArray();
+            for (String user : dao.fetchAllUsers(limit)) {
+                usersJson.add(user);
+            }
+
+            JsonArray messagesJson = messagesToJson(dao.fetchAllMessages(limit));
+            response.add("users", usersJson);
+            response.add("messages", messagesJson);
+            sendJsonObject(exchange, response);
+        } catch (Exception ex) {
+            sendPlain(exchange, 500, "Unable to load admin data");
         }
     }
 
@@ -163,6 +404,11 @@ public final class ChatServer {
     }
 
     private static void sendJson(HttpExchange exchange, JsonArray body) throws IOException {
+        byte[] bytes = GSON.toJson(body).getBytes(StandardCharsets.UTF_8);
+        sendResponse(exchange, 200, "application/json; charset=UTF-8", bytes);
+    }
+
+    private static void sendJsonObject(HttpExchange exchange, JsonObject body) throws IOException {
         byte[] bytes = GSON.toJson(body).getBytes(StandardCharsets.UTF_8);
         sendResponse(exchange, 200, "application/json; charset=UTF-8", bytes);
     }
@@ -225,6 +471,10 @@ public final class ChatServer {
         return "text/plain; charset=UTF-8";
     }
 
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
     @FunctionalInterface
     private interface MessageSupplier {
         List<Message> get(Map<String, String> params, int limit) throws Exception;
@@ -232,6 +482,29 @@ public final class ChatServer {
 
     private static final class SendPayload {
         String author;
+        String password;
         String text;
+    }
+
+    private static final class LoginPayload {
+        String handle;
+        String password;
+        String recoveryQuestion;
+        String recoveryAnswer;
+    }
+
+    private static final class RecoveryQuestionPayload {
+        String handle;
+    }
+
+    private static final class RecoveryResetPayload {
+        String handle;
+        String answer;
+        String newPassword;
+    }
+
+    private static final class DeletePayload {
+        Long messageId;
+        String handle;
     }
 }

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ShipLink Master Set</title>
+    <style>
+        :root {
+            color: #e8f0f7;
+            font-family: "Sora", "Inter", system-ui, sans-serif;
+            background-color: #0a1017;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: radial-gradient(circle at top left, rgba(14, 65, 95, 0.55), transparent 40%), #0a1017;
+            padding: 1rem;
+        }
+        .shell {
+            width: min(1300px, 100%);
+            margin: 0 auto;
+            background: #101923;
+            border-radius: 22px;
+            border: 1px solid rgba(255,255,255,0.08);
+            overflow: hidden;
+            box-shadow: 0 30px 70px rgba(0,0,0,0.45);
+        }
+        .head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.2rem;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.02);
+        }
+        .title { margin: 0; color: #38d6ff; font-size: 1.2rem; letter-spacing: 0.06em; }
+        .sub { margin: 0.2rem 0 0; color: rgba(255,255,255,0.65); font-size: 0.85rem; }
+        .btn {
+            border: none;
+            border-radius: 999px;
+            padding: 0.55rem 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            background: linear-gradient(135deg, #00ff94, #00a3ff);
+            color: #072033;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 1rem;
+            padding: 1rem;
+        }
+        .card {
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 16px;
+            background: rgba(255,255,255,0.02);
+            padding: 0.85rem;
+        }
+        .card h3 { margin: 0 0 0.6rem; font-size: 0.92rem; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.7); }
+        .list { list-style: none; margin: 0; padding: 0; max-height: 70vh; overflow: auto; }
+        .list li {
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            padding: 0.55rem 0.7rem;
+            margin-bottom: 0.5rem;
+            background: rgba(0,0,0,0.18);
+        }
+        .msg-author { color: #9fe8ff; font-weight: 600; }
+        .msg-meta { color: rgba(255,255,255,0.55); font-size: 0.78rem; }
+        .msg-body { margin-top: 0.25rem; }
+        .status { color: rgba(255,255,255,0.7); font-size: 0.86rem; }
+        @media (max-width: 960px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<div class="shell">
+    <div class="head">
+        <div>
+            <p class="title">ShipLink Master Set</p>
+            <p class="sub">Admin-only global visibility: all users and all chats</p>
+        </div>
+        <div style="display:flex; gap:0.5rem;">
+            <button class="btn" id="refreshBtn">Refresh</button>
+            <button class="btn" id="logoutBtn" style="background: linear-gradient(135deg, #ff7d7d, #ff9b7d);">Logout</button>
+        </div>
+    </div>
+    <div class="grid">
+        <section class="card">
+            <h3>All Users</h3>
+            <p class="status" id="userCount">Loading users...</p>
+            <ul class="list" id="usersList"></ul>
+        </section>
+        <section class="card">
+            <h3>All Chats</h3>
+            <p class="status" id="chatCount">Loading chats...</p>
+            <ul class="list" id="messagesList"></ul>
+        </section>
+    </div>
+</div>
+
+<script>
+    const token = localStorage.getItem('adminToken');
+    const isAdmin = localStorage.getItem('isAdmin') === 'true';
+
+    if (!token || !isAdmin) {
+        window.location.href = '/login.html';
+    }
+
+    const usersList = document.getElementById('usersList');
+    const messagesList = document.getElementById('messagesList');
+    const userCount = document.getElementById('userCount');
+    const chatCount = document.getElementById('chatCount');
+
+    document.getElementById('refreshBtn').addEventListener('click', loadMasterSet);
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+        localStorage.removeItem('adminToken');
+        localStorage.removeItem('isAdmin');
+        localStorage.removeItem('handle');
+        localStorage.removeItem('password');
+        window.location.href = '/login.html';
+    });
+
+    async function loadMasterSet() {
+        try {
+            const res = await fetch(`/api/admin/master?token=${encodeURIComponent(token)}&limit=300`);
+            if (!res.ok) {
+                const msg = await res.text();
+                throw new Error(msg || 'Unauthorized');
+            }
+            const data = await res.json();
+            renderUsers(data.users || []);
+            renderMessages(data.messages || []);
+        } catch (error) {
+            userCount.textContent = 'Access denied or failed to load';
+            chatCount.textContent = error.message;
+        }
+    }
+
+    function renderUsers(users) {
+        usersList.innerHTML = '';
+        userCount.textContent = `${users.length} user(s)`;
+        if (!users.length) {
+            usersList.innerHTML = '<li>No users found</li>';
+            return;
+        }
+        users.forEach(u => {
+            const li = document.createElement('li');
+            li.textContent = u;
+            usersList.appendChild(li);
+        });
+    }
+
+    function renderMessages(messages) {
+        messagesList.innerHTML = '';
+        chatCount.textContent = `${messages.length} chat message(s)`;
+        if (!messages.length) {
+            messagesList.innerHTML = '<li>No chats found</li>';
+            return;
+        }
+        messages.forEach(m => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <div class="msg-author">${m.author}</div>
+                <div class="msg-meta">#${m.id} • ${new Date(m.timestamp).toLocaleString()}</div>
+                <div class="msg-body">${m.text}</div>
+            `;
+            messagesList.appendChild(li);
+        });
+    }
+
+    loadMasterSet();
+</script>
+</body>
+</html>

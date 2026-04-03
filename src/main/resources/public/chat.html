@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Advanced JDBC Chat</title>
+    <style>
+        :root {
+            color: #e1e8f0;
+            font-family: "Sora", "Inter", system-ui, sans-serif;
+            background-color: #010409;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: radial-gradient(circle at top, rgba(7, 58, 93, 0.65), transparent 40%), #020409;
+            display: flex;
+            justify-content: center;
+            align-items: stretch;
+            padding: 1rem;
+        }
+
+        .app-shell {
+            width: min(1300px, 100%);
+            min-height: 90vh;
+            border-radius: 28px;
+            overflow: hidden;
+            background: #0b121b;
+            box-shadow: 0 40px 120px rgba(2, 6, 23, 0.8);
+            display: grid;
+            grid-template-columns: 360px 1fr;
+        }
+
+        .sidebar {
+            background: linear-gradient(180deg, rgba(6, 20, 35, 0.95), rgba(3, 8, 20, 0.8));
+            border-right: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .brand-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+        }
+
+        .brand-title {
+            margin: 0;
+            font-size: 1.35rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            color: #26deff;
+        }
+
+        .brand-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: linear-gradient(120deg, #00ff94, #00a3ff);
+        }
+
+        .login-card {
+            padding: 1.2rem;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(18px);
+        }
+
+        .login-card h2 {
+            margin: 0 0 0.35rem;
+            font-size: 1.15rem;
+        }
+
+        .login-card form {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .input-group label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        input, textarea, button {
+            font: inherit;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 0.65rem 0.9rem;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.04);
+            color: inherit;
+        }
+
+        .input-group input:focus {
+            outline: 2px solid #26deff;
+            outline-offset: 2px;
+        }
+
+        .login-card button {
+            margin-top: 0.4rem;
+            border: none;
+            border-radius: 999px;
+            padding: 0.7rem 1rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            cursor: pointer;
+            background: linear-gradient(135deg, #00ff94, #00a3ff);
+            color: #04111d;
+            transition: transform 120ms ease;
+        }
+
+        .login-card button:active {
+            transform: scale(0.97);
+        }
+
+        .status-line {
+            margin: 0.35rem 0 0;
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.65);
+        }
+
+        .panel {
+            border-radius: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .panel-title {
+            margin: 0 0 0.6rem;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .contact-list,
+        .message-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.55rem;
+            max-height: 220px;
+            overflow: auto;
+        }
+
+        .contact {
+            padding: 0.75rem 0.9rem;
+            border-radius: 16px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .contact-handle {
+            font-weight: 600;
+            color: #d1ffde;
+        }
+
+        .contact-meta {
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .contact small {
+            display: block;
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .chat-shell {
+            display: flex;
+            flex-direction: column;
+            background: radial-gradient(circle at top right, rgba(1, 120, 99, 0.25), transparent 60%), #050b12;
+            padding: 1.5rem;
+            gap: 1rem;
+        }
+
+        .chat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .chat-title {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+
+        .chat-subtitle {
+            margin: 0;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .ghost {
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: transparent;
+            border-radius: 999px;
+            padding: 0.5rem 1rem;
+            color: inherit;
+            cursor: pointer;
+        }
+
+        .ghost:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .message-feed {
+            flex: 1;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.02);
+            padding: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .message {
+            max-width: 70%;
+            padding: 0.65rem 0.85rem;
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            position: relative;
+        }
+
+        .message--mine {
+            align-self: flex-end;
+            background: linear-gradient(135deg, #00ff94, #0099ff);
+            color: #050b12;
+            border: none;
+            box-shadow: 0 15px 35px rgba(0, 153, 255, 0.2);
+        }
+
+        .message-meta {
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.65);
+            margin-bottom: 0.25rem;
+        }
+
+        .message-box {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 999px;
+            padding: 0.35rem 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .message-box input {
+            flex: 1;
+            border: none;
+            background: transparent;
+            color: inherit;
+            padding: 0.55rem 0.25rem;
+        }
+
+        .message-box button {
+            border: none;
+            border-radius: 999px;
+            padding: 0.65rem 1rem;
+            background: #26deff;
+            color: #04111d;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .message-feedback {
+            min-height: 1.1rem;
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.65);
+        }
+
+        .message-feed::-webkit-scrollbar,
+        .contact-list::-webkit-scrollbar,
+        .message-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .message-feed::-webkit-scrollbar-thumb,
+        .contact-list::-webkit-scrollbar-thumb,
+        .message-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 999px;
+        }
+
+        @media (max-width: 960px) {
+            .app-shell {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                order: 2;
+                min-height: 0;
+            }
+
+            .chat-shell {
+                order: 1;
+            }
+
+            .message {
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="app-shell">
+    <aside class="sidebar">
+        <div class="brand-bar">
+            <div>
+                <p class="brand-title">ShipLink</p>
+                <p class="status-line">Secure chat</p>
+            </div>
+            <div class="brand-dot"></div>
+        </div>
+        <div class="panel">
+            <div class="panel-title">Your Account</div>
+            <div style="padding: 0.75rem; border-radius: 12px; background: rgba(0, 255, 148, 0.1); border: 1px solid rgba(0, 255, 148, 0.2); margin-bottom: 0.6rem;">
+                <p style="margin: 0; font-weight: 600; color: #d1ffde;" id="userDisplay"></p>
+            </div>
+            <button id="logoutButton" style="width: 100%; padding: 0.6rem; border-radius: 12px; background: linear-gradient(135deg, #ff6b6b, #ff8787); border: none; color: #fff; font-weight: 600; cursor: pointer;">Logout</button>
+        </div>
+        <div class="panel">
+            <div class="panel-title">Recent Contacts</div>
+            <ul id="contactList" class="contact-list"></ul>
+        </div>
+        <div class="panel">
+            <div class="panel-title">Search Users</div>
+            <form id="searchForm">
+                <input id="searchInput" type="search" placeholder="Search someone" autocomplete="off" />
+                <button type="submit">Search</button>
+            </form>
+            <ul id="searchList" class="message-list compact"></ul>
+            <p class="status-line" id="searchStatus"></p>
+        </div>
+        <div class="panel">
+            <div class="panel-title">Your Posts</div>
+            <ul id="ownList" class="message-list compact"></ul>
+            <p class="status-line" id="ownStatus">Loading your posts…</p>
+        </div>
+    </aside>
+    <section class="chat-shell">
+        <header class="chat-header">
+            <div>
+                <p class="chat-title" id="chatTitle">ShipLink Chat</p>
+                <p class="chat-subtitle" id="chatStatus">Connected</p>
+            </div>
+        </header>
+        <div class="message-feed" id="recentList"></div>
+        <p class="status-line" id="recentStatus">Recent messages will appear here.</p>
+        <form class="message-box" id="sendForm">
+            <input id="messageInput" type="text" placeholder="Write a message" autocomplete="off" required />
+            <button type="submit">Send</button>
+        </form>
+        <p class="message-feedback" id="sendFeedback"></p>
+    </section>
+</div>
+<script>
+    // Check if user is logged in
+    const handle = localStorage.getItem('handle');
+    const password = localStorage.getItem('password');
+
+    if (!handle || !password) {
+        window.location.href = '/login.html';
+    }
+
+    const API = {
+        login: '/api/login',
+        recent: '/api/messages/recent',
+        search: '/api/messages/search',
+        mine: '/api/messages/my',
+        send: '/api/messages/send',
+        delete: '/api/messages/delete',
+        contacts: '/api/contacts',
+        userSearch: '/api/users/search'
+    };
+
+    const userDisplay = document.getElementById('userDisplay');
+    const logoutButton = document.getElementById('logoutButton');
+    const chatTitle = document.getElementById('chatTitle');
+    const chatStatus = document.getElementById('chatStatus');
+    const sendForm = document.getElementById('sendForm');
+    const sendButton = sendForm.querySelector('button');
+    const messageInput = document.getElementById('messageInput');
+    const sendFeedback = document.getElementById('sendFeedback');
+    const recentList = document.getElementById('recentList');
+    const recentStatus = document.getElementById('recentStatus');
+    const contactList = document.getElementById('contactList');
+    const searchForm = document.getElementById('searchForm');
+    const searchInput = document.getElementById('searchInput');
+    const searchList = document.getElementById('searchList');
+    const searchStatus = document.getElementById('searchStatus');
+    const ownList = document.getElementById('ownList');
+    const ownStatus = document.getElementById('ownStatus');
+
+    // Initialize UI
+    userDisplay.textContent = '👤 ' + handle;
+    chatTitle.textContent = 'Chat as ' + handle;
+    messageInput.disabled = false;
+    sendButton.disabled = false;
+
+    // Logout handler
+    logoutButton.addEventListener('click', () => {
+        localStorage.removeItem('handle');
+        localStorage.removeItem('password');
+        localStorage.removeItem('isAdmin');
+        localStorage.removeItem('adminToken');
+        window.location.href = '/login.html';
+    });
+
+    // Send message handler
+    sendForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const text = messageInput.value.trim();
+        if (!text) {
+            sendFeedback.textContent = 'Type something before sending.';
+            return;
+        }
+        sendFeedback.textContent = 'Sending…';
+        try {
+            await sendMessage(text);
+            messageInput.value = '';
+            sendFeedback.textContent = 'Message delivered.';
+            fetchRecent();
+            refreshOwnPosts();
+            refreshContacts();
+            searchList.innerHTML = '';
+            searchStatus.textContent = '';
+        } catch (error) {
+            sendFeedback.textContent = error.message;
+        }
+    });
+
+    // Search user handler
+    searchForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const prefix = searchInput.value.trim();
+        if (!prefix) {
+            searchStatus.textContent = 'Type a handle to search.';
+            return;
+        }
+        searchStatus.textContent = 'Searching…';
+        try {
+            const result = await fetchJson(`${API.userSearch}?handle=${encodeURIComponent(prefix)}`);
+            if (result.exists) {
+                searchStatus.textContent = `✓ ${prefix} exists. Click to add.`;
+                renderAddUserButton(prefix);
+            } else {
+                searchStatus.textContent = `✗ Invalid username. ${prefix} does not exist.`;
+                searchList.innerHTML = '';
+            }
+        } catch (error) {
+            searchStatus.textContent = 'Search failed.';
+        }
+    });
+
+    function renderAddUserButton(userName) {
+        searchList.innerHTML = '';
+        const item = document.createElement('li');
+        item.className = 'contact';
+        const button = document.createElement('button');
+        button.textContent = `Add ${userName}`;
+        button.style.display = 'block';
+        button.style.width = '100%';
+        button.style.padding = '0.6rem';
+        button.style.borderRadius = '12px';
+        button.style.background = 'linear-gradient(135deg, #00ff94, #00a3ff)';
+        button.style.border = 'none';
+        button.style.color = '#04111d';
+        button.style.fontWeight = '600';
+        button.style.cursor = 'pointer';
+        button.onclick = async () => {
+            searchStatus.textContent = 'Contact added!';
+            searchList.innerHTML = '';
+            refreshContacts();
+        };
+        item.appendChild(button);
+        searchList.appendChild(item);
+    }
+
+    async function fetchRecent() {
+        recentStatus.textContent = 'Updating…';
+        try {
+            const params = `?currentUser=${encodeURIComponent(handle)}`;
+            const data = await fetchJson(`${API.recent}${params}&limit=20`);
+            renderMessages(recentList, data);
+            recentStatus.textContent = data.length ? `Showing ${data.length} messages.` : 'No posts yet.';
+        } catch (error) {
+            recentStatus.textContent = 'Could not load messages.';
+        }
+    }
+
+    async function refreshContacts() {
+        try {
+            const contacts = await fetchJson(`${API.contacts}?handle=${encodeURIComponent(handle)}`);
+            contactList.innerHTML = '';
+            if (contacts.length === 0) {
+                const item = document.createElement('li');
+                item.className = 'contact';
+                item.textContent = 'No contacts yet. Search to add users!';
+                contactList.appendChild(item);
+            } else {
+                contacts.forEach(contact => {
+                    const item = document.createElement('li');
+                    item.className = 'contact';
+                    item.innerHTML = `<span class="contact-handle">${contact}</span>`;
+                    contactList.appendChild(item);
+                });
+            }
+        } catch (error) {
+            console.error('Failed to load contacts:', error);
+        }
+    }
+
+    async function refreshOwnPosts() {
+        ownStatus.textContent = 'Loading your posts…';
+        try {
+            const data = await fetchJson(`${API.mine}?author=${encodeURIComponent(handle)}`);
+            renderCompactList(ownList, data, 'No posts yet.');
+            ownStatus.textContent = data.length ? `You have ${data.length} recent messages.` : 'No posts yet.';
+        } catch (error) {
+            ownStatus.textContent = 'Unable to load your posts.';
+        }
+    }
+
+    async function sendMessage(text) {
+        await fetchJson(API.send, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({author: handle, password: password, text})
+        });
+    }
+
+    async function deleteMessage(messageId) {
+        if (!confirm('Delete this message for you?')) {
+            return;
+        }
+        try {
+            await fetchJson(API.delete, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({messageId, handle})
+            });
+            fetchRecent();
+        } catch (error) {
+            alert('Failed to delete message');
+        }
+    }
+
+    function renderMessages(container, messages) {
+        container.innerHTML = '';
+        messages.slice().reverse().forEach(msg => {
+            const article = document.createElement('article');
+            article.className = 'message';
+            if (msg.author === handle) {
+                article.classList.add('message--mine');
+            }
+            const meta = document.createElement('div');
+            meta.className = 'message-meta';
+            meta.textContent = `${msg.author} • ${formatTimestamp(msg.timestamp)}`;
+            const body = document.createElement('div');
+            body.textContent = msg.text;
+            
+            const footer = document.createElement('div');
+            footer.style.display = 'flex';
+            footer.style.justifyContent = 'space-between';
+            footer.style.marginTop = '0.35rem';
+            
+            if (msg.author === handle) {
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = '🗑 Delete';
+                deleteBtn.style.fontSize = '0.7rem';
+                deleteBtn.style.padding = '0.3rem 0.5rem';
+                deleteBtn.style.background = 'rgba(255, 0, 0, 0.2)';
+                deleteBtn.style.border = 'none';
+                deleteBtn.style.borderRadius = '6px';
+                deleteBtn.style.color = 'inherit';
+                deleteBtn.style.cursor = 'pointer';
+                deleteBtn.onclick = () => deleteMessage(msg.id);
+                footer.appendChild(deleteBtn);
+            }
+            
+            article.append(meta, body, footer);
+            container.appendChild(article);
+        });
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function renderCompactList(container, messages, emptyText) {
+        container.innerHTML = '';
+        if (!messages.length) {
+            const placeholder = document.createElement('li');
+            placeholder.className = 'contact';
+            placeholder.textContent = emptyText;
+            container.appendChild(placeholder);
+            return;
+        }
+        messages.slice(0, 6).forEach(msg => {
+            const item = document.createElement('li');
+            item.className = 'contact';
+            item.innerHTML = `
+                <span class="contact-handle">${msg.author}</span>
+                <span class="contact-meta">${formatTimestamp(msg.timestamp)}</span>
+                <small>${msg.text}</small>
+            `;
+            container.appendChild(item);
+        });
+    }
+
+    async function fetchJson(url, options = {}) {
+        const response = await fetch(url, options);
+        if (!response.ok) {
+            const message = await response.text();
+            throw new Error(message || 'Request failed.');
+        }
+        return response.json();
+    }
+
+    function formatTimestamp(timestamp) {
+        try {
+            const dt = new Date(timestamp);
+            return dt.toLocaleString([], {hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric'});
+        } catch (error) {
+            return timestamp;
+        }
+    }
+
+    // Load initial data
+    refreshContacts();
+    refreshOwnPosts();
+    fetchRecent();
+</script>
+</body>
+</html>

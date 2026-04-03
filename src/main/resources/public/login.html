@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ShipLink Login</title>
+    <style>
+        :root {
+            color: #e1e8f0;
+            font-family: "Sora", "Inter", system-ui, sans-serif;
+            background-color: #010409;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: radial-gradient(circle at top, rgba(7, 58, 93, 0.65), transparent 40%), #020409;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 1rem;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 420px;
+            background: #0b121b;
+            border-radius: 28px;
+            padding: 3rem;
+            box-shadow: 0 40px 120px rgba(2, 6, 23, 0.8);
+        }
+
+        .brand {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        .brand-title {
+            margin: 0 0 0.5rem;
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            color: #26deff;
+        }
+
+        .brand-subtitle {
+            margin: 0;
+            font-size: 0.95rem;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .form-group {
+            margin-bottom: 1.2rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 0.5rem;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.04);
+            color: inherit;
+            font: inherit;
+            font-size: 1rem;
+        }
+
+        input:focus {
+            outline: 2px solid #26deff;
+            outline-offset: 2px;
+        }
+
+        input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        button {
+            width: 100%;
+            padding: 0.85rem;
+            border-radius: 999px;
+            border: none;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            cursor: pointer;
+            background: linear-gradient(135deg, #00ff94, #00a3ff);
+            color: #04111d;
+            font-size: 1rem;
+            margin-top: 0.5rem;
+            transition: transform 120ms ease;
+        }
+
+        button:active {
+            transform: scale(0.97);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            font-size: 0.9rem;
+            text-align: center;
+            color: rgba(255, 255, 255, 0.7);
+            min-height: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .status.error {
+            background: rgba(255, 0, 0, 0.1);
+            border-color: rgba(255, 0, 0, 0.3);
+            color: #ff6b6b;
+        }
+
+        .status.success {
+            background: rgba(0, 255, 148, 0.1);
+            border-color: rgba(0, 255, 148, 0.3);
+            color: #26deff;
+        }
+    </style>
+</head>
+<body>
+<div class="login-container">
+    <div class="brand">
+        <p class="brand-title">ShipLink</p>
+        <p class="brand-subtitle">Secure chat</p>
+    </div>
+
+    <form id="loginForm">
+        <div class="form-group">
+            <label for="loginHandle">Handle / Username</label>
+            <input
+                id="loginHandle"
+                type="text"
+                autocomplete="off"
+                placeholder="e.g. alice"
+                required
+            />
+        </div>
+
+        <div class="form-group">
+            <label for="loginPassword">Password</label>
+            <input
+                id="loginPassword"
+                type="password"
+                autocomplete="new-password"
+                placeholder="••••••"
+                required
+            />
+        </div>
+
+        <div class="form-group">
+            <label for="recoveryQuestion">Recovery Question (required for new account)</label>
+            <input
+                id="recoveryQuestion"
+                type="text"
+                autocomplete="off"
+                placeholder="e.g. What is my first pet name?"
+            />
+        </div>
+
+        <div class="form-group">
+            <label for="recoveryAnswer">Recovery Answer (required for new account)</label>
+            <input
+                id="recoveryAnswer"
+                type="text"
+                autocomplete="off"
+                placeholder="Your answer"
+            />
+        </div>
+
+        <button type="submit" id="submitBtn">Sign In / Register</button>
+    </form>
+
+    <div style="margin-top: 0.8rem; text-align: center;">
+        <button type="button" id="forgotToggle" style="background: transparent; color: #26deff; border: 1px solid rgba(38, 222, 255, 0.35);">Forgot password?</button>
+    </div>
+
+    <form id="forgotForm" style="display: none; margin-top: 1rem; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 1rem;">
+        <div class="form-group">
+            <label for="forgotHandle">Username</label>
+            <input id="forgotHandle" type="text" autocomplete="off" placeholder="Enter username" />
+        </div>
+        <button type="button" id="askQuestionBtn">Get Recovery Question</button>
+        <div class="form-group" id="questionBlock" style="display: none; margin-top: 1rem;">
+            <label>Recovery Question</label>
+            <input id="questionText" type="text" readonly />
+        </div>
+        <div class="form-group" id="answerBlock" style="display: none;">
+            <label for="forgotAnswer">Your Answer</label>
+            <input id="forgotAnswer" type="text" autocomplete="off" placeholder="Answer" />
+        </div>
+        <div class="form-group" id="newPasswordBlock" style="display: none;">
+            <label for="newPassword">New Password</label>
+            <input id="newPassword" type="password" autocomplete="new-password" placeholder="New password" />
+        </div>
+        <button type="button" id="resetPasswordBtn" style="display: none;">Reset Password</button>
+    </form>
+
+    <div class="status" id="statusBox"></div>
+</div>
+
+<script>
+    const loginForm = document.getElementById('loginForm');
+    const loginHandle = document.getElementById('loginHandle');
+    const loginPassword = document.getElementById('loginPassword');
+    const recoveryQuestion = document.getElementById('recoveryQuestion');
+    const recoveryAnswer = document.getElementById('recoveryAnswer');
+    const statusBox = document.getElementById('statusBox');
+    const submitBtn = document.getElementById('submitBtn');
+    const forgotToggle = document.getElementById('forgotToggle');
+    const forgotForm = document.getElementById('forgotForm');
+    const forgotHandle = document.getElementById('forgotHandle');
+    const askQuestionBtn = document.getElementById('askQuestionBtn');
+    const questionBlock = document.getElementById('questionBlock');
+    const questionText = document.getElementById('questionText');
+    const answerBlock = document.getElementById('answerBlock');
+    const forgotAnswer = document.getElementById('forgotAnswer');
+    const newPasswordBlock = document.getElementById('newPasswordBlock');
+    const newPassword = document.getElementById('newPassword');
+    const resetPasswordBtn = document.getElementById('resetPasswordBtn');
+
+    loginForm.addEventListener('submit', async event => {
+        event.preventDefault();
+
+        const handle = loginHandle.value.trim();
+        const password = loginPassword.value.trim();
+        const question = recoveryQuestion.value.trim();
+        const answer = recoveryAnswer.value.trim();
+
+        if (!handle || !password) {
+            showStatus('Both handle and password are required.', 'error');
+            return;
+        }
+
+        submitBtn.disabled = true;
+        showStatus('Signing in…', '');
+
+        try {
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    handle,
+                    password,
+                    recoveryQuestion: question,
+                    recoveryAnswer: answer
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.text();
+                showStatus(error || 'Login failed', 'error');
+                submitBtn.disabled = false;
+                return;
+            }
+
+            const data = await response.json();
+            showStatus(data.message, 'success');
+
+            // Persist auth so refresh/close does not force login.
+            localStorage.setItem('handle', handle);
+            localStorage.setItem('password', password);
+            if (data.admin === true && data.adminToken) {
+                localStorage.setItem('isAdmin', 'true');
+                localStorage.setItem('adminToken', data.adminToken);
+            } else {
+                localStorage.removeItem('isAdmin');
+                localStorage.removeItem('adminToken');
+            }
+
+            setTimeout(() => {
+                window.location.href = data.admin === true ? '/master.html' : '/chat.html';
+            }, 800);
+
+        } catch (error) {
+            showStatus('Connection error: ' + error.message, 'error');
+            submitBtn.disabled = false;
+        }
+    });
+
+    forgotToggle.addEventListener('click', () => {
+        const opening = forgotForm.style.display === 'none';
+        forgotForm.style.display = opening ? 'block' : 'none';
+        if (opening) {
+            showStatus('Enter username to recover password.', '');
+        }
+    });
+
+    askQuestionBtn.addEventListener('click', async () => {
+        const handle = forgotHandle.value.trim();
+        if (!handle) {
+            showStatus('Enter username first.', 'error');
+            return;
+        }
+        try {
+            const response = await fetch('/api/recovery/question', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({handle})
+            });
+            if (!response.ok) {
+                const error = await response.text();
+                showStatus(error || 'Unable to fetch question.', 'error');
+                return;
+            }
+            const data = await response.json();
+            questionText.value = data.question;
+            questionBlock.style.display = 'block';
+            answerBlock.style.display = 'block';
+            newPasswordBlock.style.display = 'block';
+            resetPasswordBtn.style.display = 'block';
+            showStatus('Answer the question and set a new password.', '');
+        } catch (error) {
+            showStatus('Connection error: ' + error.message, 'error');
+        }
+    });
+
+    resetPasswordBtn.addEventListener('click', async () => {
+        const handle = forgotHandle.value.trim();
+        const answer = forgotAnswer.value.trim();
+        const nextPassword = newPassword.value.trim();
+        if (!handle || !answer || !nextPassword) {
+            showStatus('Username, answer, and new password are required.', 'error');
+            return;
+        }
+        try {
+            const response = await fetch('/api/recovery/reset', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({handle, answer, newPassword: nextPassword})
+            });
+            if (!response.ok) {
+                const error = await response.text();
+                showStatus(error || 'Password reset failed.', 'error');
+                return;
+            }
+            const data = await response.json();
+            showStatus(data.message + ' You can now sign in.', 'success');
+            forgotAnswer.value = '';
+            newPassword.value = '';
+        } catch (error) {
+            showStatus('Connection error: ' + error.message, 'error');
+        }
+    });
+
+    function showStatus(message, type) {
+        statusBox.textContent = message;
+        statusBox.className = 'status' + (type ? ' ' + type : '');
+    }
+
+    // Check if already logged in
+    if (localStorage.getItem('isAdmin') === 'true' && localStorage.getItem('adminToken')) {
+        window.location.href = '/master.html';
+    } else if (localStorage.getItem('handle')) {
+        window.location.href = '/chat.html';
+    }
+</script>
+</body>
+</html>

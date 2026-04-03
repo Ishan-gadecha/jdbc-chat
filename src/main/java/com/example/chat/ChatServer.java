@@ -45,12 +45,13 @@ public final class ChatServer {
             server.createContext("/api/login", exchange -> handleLogin(exchange, dao));
             server.createContext("/api/recovery/question", exchange -> handleRecoveryQuestion(exchange, dao));
             server.createContext("/api/recovery/reset", exchange -> handleRecoveryReset(exchange, dao));
-            server.createContext("/api/messages/recent", exchange -> handleRead(exchange, (params, limit) -> dao.fetchRecent(limit), 10));
-            server.createContext("/api/messages/search", exchange -> handleRead(exchange, (params, limit) -> dao.fetchByAuthor(params.getOrDefault("prefix", ""), limit), 15));
-            server.createContext("/api/messages/my", exchange -> handleRead(exchange, (params, limit) -> dao.fetchByAuthor(params.getOrDefault("author", ""), limit), 5));
+            server.createContext("/api/messages/recent", exchange -> handleRecent(exchange, dao));
+            server.createContext("/api/messages/search", exchange -> handleSearch(exchange, dao));
+            server.createContext("/api/messages/my", exchange -> handleMy(exchange, dao));
             server.createContext("/api/messages/send", exchange -> handleSend(exchange, dao));
             server.createContext("/api/messages/delete", exchange -> handleDeleteMessage(exchange, dao));
             server.createContext("/api/contacts", exchange -> handleContacts(exchange, dao));
+            server.createContext("/api/contacts/add", exchange -> handleAddContact(exchange, dao));
             server.createContext("/api/users/search", exchange -> handleUserSearch(exchange, dao));
             server.createContext("/api/admin/master", exchange -> handleAdminMaster(exchange, dao));
             server.start();
@@ -70,21 +71,6 @@ public final class ChatServer {
             return Integer.parseInt(portValue.trim());
         } catch (NumberFormatException ex) {
             return DEFAULT_PORT;
-        }
-    }
-
-    private static void handleRead(HttpExchange exchange, MessageSupplier supplier, int defaultLimit) throws IOException {
-        if (!"GET".equals(exchange.getRequestMethod())) {
-            sendPlain(exchange, 405, "Only GET allowed");
-            return;
-        }
-        Map<String, String> params = queryParams(exchange);
-        int limit = requestedLimit(params, defaultLimit);
-        try {
-            List<Message> messages = supplier.get(params, limit);
-            sendJson(exchange, messagesToJson(messages));
-        } catch (Exception ex) {
-            sendPlain(exchange, 500, "Unable to load messages");
         }
     }
 
@@ -137,7 +123,8 @@ public final class ChatServer {
                 return;
             }
 
-            boolean admin = dao.isAdmin(handle);
+            // Keep normal users in chat flow; admin page is optional and not auto-forced.
+            boolean admin = false;
             JsonObject response = new JsonObject();
             response.addProperty("message", "Signed in successfully");
             response.addProperty("admin", admin);
@@ -231,21 +218,81 @@ public final class ChatServer {
             sendPlain(exchange, 400, "Malformed payload");
             return;
         }
-        if (payload == null || isBlank(payload.author) || isBlank(payload.password) || isBlank(payload.text)) {
-            sendPlain(exchange, 400, "Author, password, and text are required");
+        if (payload == null || isBlank(payload.author) || isBlank(payload.password) || isBlank(payload.to) || isBlank(payload.text)) {
+            sendPlain(exchange, 400, "Author, password, recipient, and text are required");
             return;
         }
         try {
             String author = payload.author.trim();
+            String recipient = payload.to.trim();
             if (!dao.validateLogin(author, payload.password.trim())) {
                 sendPlain(exchange, 401, "Invalid username or password");
                 return;
             }
-            dao.storeMessage(author, payload.text.trim());
-            List<Message> latest = dao.fetchByAuthor(author, 1);
+            dao.addContact(author, recipient);
+            dao.addContact(recipient, author);
+            dao.storeDirectMessage(author, recipient, payload.text.trim());
+            List<Message> latest = dao.fetchConversation(author, recipient, 30);
             sendJson(exchange, messagesToJson(latest));
         } catch (Exception ex) {
             sendPlain(exchange, 500, "Unable to store message");
+        }
+    }
+
+    private static void handleRecent(HttpExchange exchange, ChatDao dao) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendPlain(exchange, 405, "Only GET allowed");
+            return;
+        }
+        Map<String, String> params = queryParams(exchange);
+        int limit = requestedLimit(params, 30);
+        try {
+            String currentUser = params.getOrDefault("currentUser", "").trim();
+            String chatWith = params.getOrDefault("chatWith", "").trim();
+
+            List<Message> messages;
+            if (!currentUser.isEmpty() && !chatWith.isEmpty()) {
+                messages = dao.fetchConversation(currentUser, chatWith, limit);
+            } else if (!currentUser.isEmpty()) {
+                messages = dao.fetchForUser(currentUser, limit);
+            } else {
+                messages = dao.fetchRecent(limit);
+            }
+            sendJson(exchange, messagesToJson(messages));
+        } catch (Exception ex) {
+            sendPlain(exchange, 500, "Unable to load messages");
+        }
+    }
+
+    private static void handleSearch(HttpExchange exchange, ChatDao dao) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendPlain(exchange, 405, "Only GET allowed");
+            return;
+        }
+        Map<String, String> params = queryParams(exchange);
+        String prefix = params.getOrDefault("prefix", "").trim();
+        int limit = requestedLimit(params, 15);
+        try {
+            List<Message> messages = dao.fetchByAuthor(prefix, limit);
+            sendJson(exchange, messagesToJson(messages));
+        } catch (Exception ex) {
+            sendPlain(exchange, 500, "Unable to load messages");
+        }
+    }
+
+    private static void handleMy(HttpExchange exchange, ChatDao dao) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendPlain(exchange, 405, "Only GET allowed");
+            return;
+        }
+        Map<String, String> params = queryParams(exchange);
+        String author = params.getOrDefault("author", "").trim();
+        int limit = requestedLimit(params, 10);
+        try {
+            List<Message> messages = dao.fetchByAuthor(author, limit);
+            sendJson(exchange, messagesToJson(messages));
+        } catch (Exception ex) {
+            sendPlain(exchange, 500, "Unable to load messages");
         }
     }
 
@@ -304,6 +351,39 @@ public final class ChatServer {
             sendJson(exchange, out);
         } catch (Exception ex) {
             sendPlain(exchange, 500, "Unable to load contacts");
+        }
+    }
+
+    private static void handleAddContact(HttpExchange exchange, ChatDao dao) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendPlain(exchange, 405, "Only POST allowed");
+            return;
+        }
+
+        AddContactPayload payload;
+        try {
+            payload = GSON.fromJson(readBody(exchange), AddContactPayload.class);
+        } catch (Exception ex) {
+            sendPlain(exchange, 400, "Malformed payload");
+            return;
+        }
+
+        if (payload == null || isBlank(payload.ownerHandle) || isBlank(payload.contactHandle)) {
+            sendPlain(exchange, 400, "ownerHandle and contactHandle are required");
+            return;
+        }
+
+        try {
+            if (!dao.userExists(payload.contactHandle.trim())) {
+                sendPlain(exchange, 404, "User not found");
+                return;
+            }
+            dao.addContact(payload.ownerHandle.trim(), payload.contactHandle.trim());
+            JsonObject response = new JsonObject();
+            response.addProperty("added", true);
+            sendJsonObject(exchange, response);
+        } catch (Exception ex) {
+            sendPlain(exchange, 500, "Unable to add contact");
         }
     }
 
@@ -389,6 +469,7 @@ public final class ChatServer {
             JsonObject json = new JsonObject();
             json.addProperty("id", message.getId());
             json.addProperty("author", message.getAuthor());
+            json.addProperty("recipient", message.getRecipient());
             json.addProperty("text", message.getText());
             json.addProperty("timestamp", message.getTimestamp().toString());
             array.add(json);
@@ -475,15 +556,16 @@ public final class ChatServer {
         return value == null || value.isBlank();
     }
 
-    @FunctionalInterface
-    private interface MessageSupplier {
-        List<Message> get(Map<String, String> params, int limit) throws Exception;
-    }
-
     private static final class SendPayload {
         String author;
         String password;
+        String to;
         String text;
+    }
+
+    private static final class AddContactPayload {
+        String ownerHandle;
+        String contactHandle;
     }
 
     private static final class LoginPayload {

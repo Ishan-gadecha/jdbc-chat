@@ -398,6 +398,7 @@
         send: '/api/messages/send',
         delete: '/api/messages/delete',
         contacts: '/api/contacts',
+        contactsAdd: '/api/contacts/add',
         userSearch: '/api/users/search'
     };
 
@@ -418,12 +419,14 @@
     const searchStatus = document.getElementById('searchStatus');
     const ownList = document.getElementById('ownList');
     const ownStatus = document.getElementById('ownStatus');
+    let selectedContact = '';
 
     // Initialize UI
     userDisplay.textContent = '👤 ' + handle;
     chatTitle.textContent = 'Chat as ' + handle;
     messageInput.disabled = false;
     sendButton.disabled = false;
+    chatStatus.textContent = 'Select a contact to start chatting.';
 
     // Logout handler
     logoutButton.addEventListener('click', () => {
@@ -496,9 +499,21 @@
         button.style.fontWeight = '600';
         button.style.cursor = 'pointer';
         button.onclick = async () => {
-            searchStatus.textContent = 'Contact added!';
-            searchList.innerHTML = '';
-            refreshContacts();
+            try {
+                await fetchJson(API.contactsAdd, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ownerHandle: handle, contactHandle: userName})
+                });
+                selectedContact = userName;
+                chatStatus.textContent = `Now chatting with ${selectedContact}`;
+                searchStatus.textContent = 'Contact added.';
+                searchList.innerHTML = '';
+                await refreshContacts();
+                await fetchRecent();
+            } catch (error) {
+                searchStatus.textContent = 'Failed to add contact.';
+            }
         };
         item.appendChild(button);
         searchList.appendChild(item);
@@ -507,10 +522,14 @@
     async function fetchRecent() {
         recentStatus.textContent = 'Updating…';
         try {
-            const params = `?currentUser=${encodeURIComponent(handle)}`;
+            const params = `?currentUser=${encodeURIComponent(handle)}&chatWith=${encodeURIComponent(selectedContact)}`;
             const data = await fetchJson(`${API.recent}${params}&limit=20`);
             renderMessages(recentList, data);
-            recentStatus.textContent = data.length ? `Showing ${data.length} messages.` : 'No posts yet.';
+            if (!selectedContact) {
+                recentStatus.textContent = 'Select or add a contact to see conversation.';
+            } else {
+                recentStatus.textContent = data.length ? `Showing ${data.length} messages.` : `No messages yet with ${selectedContact}.`;
+            }
         } catch (error) {
             recentStatus.textContent = 'Could not load messages.';
         }
@@ -530,8 +549,18 @@
                     const item = document.createElement('li');
                     item.className = 'contact';
                     item.innerHTML = `<span class="contact-handle">${contact}</span>`;
+                    item.style.cursor = 'pointer';
+                    item.onclick = () => {
+                        selectedContact = contact;
+                        chatStatus.textContent = `Now chatting with ${selectedContact}`;
+                        fetchRecent();
+                    };
                     contactList.appendChild(item);
                 });
+                if (!selectedContact) {
+                    selectedContact = contacts[0];
+                    chatStatus.textContent = `Now chatting with ${selectedContact}`;
+                }
             }
         } catch (error) {
             console.error('Failed to load contacts:', error);
@@ -550,10 +579,13 @@
     }
 
     async function sendMessage(text) {
+        if (!selectedContact) {
+            throw new Error('Select a contact first.');
+        }
         await fetchJson(API.send, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({author: handle, password: password, text})
+            body: JSON.stringify({author: handle, password: password, to: selectedContact, text})
         });
     }
 

@@ -15,6 +15,7 @@ public final class ChatDao {
     private static final String TABLE_SETUP = "CREATE TABLE IF NOT EXISTS messages ("
             + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
             + "author TEXT NOT NULL,"
+            + "recipient TEXT,"
             + "payload TEXT NOT NULL,"
             + "created_at TEXT NOT NULL)";
     private static final String USERS_TABLE_SETUP = "CREATE TABLE IF NOT EXISTS users ("
@@ -42,6 +43,11 @@ public final class ChatDao {
             statement.execute(TABLE_SETUP);
             statement.execute(USERS_TABLE_SETUP);
             statement.execute(CONTACTS_TABLE_SETUP);
+            try {
+                statement.execute("ALTER TABLE messages ADD COLUMN recipient TEXT");
+            } catch (SQLException ignored) {
+                // Column already exists for upgraded databases.
+            }
         }
     }
 
@@ -56,21 +62,13 @@ public final class ChatDao {
     }
 
     public boolean registerUser(String handle, String password, String recoveryQuestion, String recoveryAnswer) throws SQLException {
-        String countSql = "SELECT COUNT(*) AS total FROM users";
-        int isAdmin = 0;
-        try (Connection connection = connect(); Statement countStmt = connection.createStatement(); ResultSet rs = countStmt.executeQuery(countSql)) {
-            if (rs.next() && rs.getInt("total") == 0) {
-                isAdmin = 1;
-            }
-        }
-
         String insert = "INSERT INTO users (handle, password_hash, recovery_question, recovery_answer_hash, is_admin) VALUES (?, ?, ?, ?, ?)";
         try (Connection connection = connect(); PreparedStatement statement = connection.prepareStatement(insert)) {
             statement.setString(1, handle);
             statement.setString(2, PasswordUtil.hash(handle, password));
             statement.setString(3, recoveryQuestion);
             statement.setString(4, PasswordUtil.hash(handle, recoveryAnswer));
-            statement.setInt(5, isAdmin);
+            statement.setInt(5, 0);
             return statement.executeUpdate() == 1;
         }
     }
@@ -137,17 +135,22 @@ public final class ChatDao {
     }
 
     public void storeMessage(String author, String payload) throws SQLException {
-        String insert = "INSERT INTO messages (author, payload, created_at) VALUES (?, ?, ?)";
+        storeDirectMessage(author, null, payload);
+    }
+
+    public void storeDirectMessage(String author, String recipient, String payload) throws SQLException {
+        String insert = "INSERT INTO messages (author, recipient, payload, created_at) VALUES (?, ?, ?, ?)";
         try (Connection connection = connect(); PreparedStatement statement = connection.prepareStatement(insert)) {
             statement.setString(1, author);
-            statement.setString(2, payload);
-            statement.setString(3, LocalDateTime.now().toString());
+            statement.setString(2, recipient);
+            statement.setString(3, payload);
+            statement.setString(4, LocalDateTime.now().toString());
             statement.executeUpdate();
         }
     }
 
     public List<Message> fetchRecent(int limit) throws SQLException {
-        String select = "SELECT id, author, payload, created_at FROM messages ORDER BY created_at DESC LIMIT ?";
+        String select = "SELECT id, author, recipient, payload, created_at FROM messages ORDER BY created_at DESC LIMIT ?";
         try (Connection connection = connect(); PreparedStatement statement = connection.prepareStatement(select)) {
             statement.setInt(1, limit);
             try (ResultSet rs = statement.executeQuery()) {
@@ -156,8 +159,37 @@ public final class ChatDao {
         }
     }
 
+    public List<Message> fetchConversation(String userA, String userB, int limit) throws SQLException {
+        String select = "SELECT id, author, recipient, payload, created_at FROM messages "
+                + "WHERE (author = ? AND recipient = ?) OR (author = ? AND recipient = ?) "
+                + "ORDER BY created_at DESC LIMIT ?";
+        try (Connection connection = connect(); PreparedStatement statement = connection.prepareStatement(select)) {
+            statement.setString(1, userA);
+            statement.setString(2, userB);
+            statement.setString(3, userB);
+            statement.setString(4, userA);
+            statement.setInt(5, limit);
+            try (ResultSet rs = statement.executeQuery()) {
+                return toMessages(rs);
+            }
+        }
+    }
+
+    public List<Message> fetchForUser(String user, int limit) throws SQLException {
+        String select = "SELECT id, author, recipient, payload, created_at FROM messages "
+                + "WHERE author = ? OR recipient = ? ORDER BY created_at DESC LIMIT ?";
+        try (Connection connection = connect(); PreparedStatement statement = connection.prepareStatement(select)) {
+            statement.setString(1, user);
+            statement.setString(2, user);
+            statement.setInt(3, limit);
+            try (ResultSet rs = statement.executeQuery()) {
+                return toMessages(rs);
+            }
+        }
+    }
+
     public List<Message> fetchByAuthor(String authorFilter, int limit) throws SQLException {
-        String select = "SELECT id, author, payload, created_at FROM messages WHERE author LIKE ? ORDER BY created_at DESC LIMIT ?";
+        String select = "SELECT id, author, recipient, payload, created_at FROM messages WHERE author LIKE ? ORDER BY created_at DESC LIMIT ?";
         try (Connection connection = connect(); PreparedStatement statement = connection.prepareStatement(select)) {
             statement.setString(1, authorFilter + "%");
             statement.setInt(2, limit);
@@ -238,6 +270,7 @@ public final class ChatDao {
             messages.add(new Message(
                     rs.getLong("id"),
                     rs.getString("author"),
+                    rs.getString("recipient"),
                     rs.getString("payload"),
                     LocalDateTime.parse(rs.getString("created_at"))));
         }

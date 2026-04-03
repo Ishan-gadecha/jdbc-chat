@@ -289,7 +289,7 @@
             }
 
             setTimeout(() => {
-                window.location.href = data.admin === true ? '/master.html' : '/chat.html';
+                window.location.href = '/chat.html';
             }, 800);
 
         } catch (error) {
@@ -369,9 +369,7 @@
     }
 
     // Check if already logged in
-    if (localStorage.getItem('isAdmin') === 'true' && localStorage.getItem('adminToken')) {
-        window.location.href = '/master.html';
-    } else if (localStorage.getItem('handle')) {
+    if (localStorage.getItem('handle') && localStorage.getItem('password')) {
         window.location.href = '/chat.html';
     }
 </script>

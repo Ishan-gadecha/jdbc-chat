@@ -1,0 +1,7 @@
+target/
+.git/
+.github/
+.vscode/
+*.log
+.chat-server.pid
+.chat-server.log

@@ -24,7 +24,7 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 
 public final class ChatServer {
-    private static final int PORT = 8080;
+    private static final int DEFAULT_PORT = 8080;
     private static final Gson GSON = new Gson();
 
     private ChatServer() {
@@ -32,11 +32,12 @@ public final class ChatServer {
 
     public static void main(String[] args) {
         Path store = Paths.get(System.getProperty("user.home"), ".advanced-chat", "chat.db");
+        int port = resolvePort();
         try {
             Files.createDirectories(store.getParent());
             ChatDao dao = new ChatDao(store);
             dao.initSchema();
-            HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 0);
+            HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
             server.setExecutor(Executors.newFixedThreadPool(4));
             server.createContext("/", new StaticHandler("/public/index.html", "text/html; charset=UTF-8"));
             server.createContext("/api/messages/recent", exchange -> handleRead(exchange, (params, limit) -> dao.fetchRecent(limit), 10));
@@ -44,10 +45,22 @@ public final class ChatServer {
             server.createContext("/api/messages/my", exchange -> handleRead(exchange, (params, limit) -> dao.fetchByAuthor(params.getOrDefault("author", ""), limit), 5));
             server.createContext("/api/messages/send", exchange -> handleSend(exchange, dao));
             server.start();
-            System.out.println("Chat server is listening on http://localhost:" + PORT);
+            System.out.println("Chat server is listening on port " + port);
         } catch (Exception ex) {
             System.err.println("Failed to start server: " + ex.getMessage());
             ex.printStackTrace();
+        }
+    }
+
+    private static int resolvePort() {
+        String portValue = System.getenv("PORT");
+        if (portValue == null || portValue.isBlank()) {
+            return DEFAULT_PORT;
+        }
+        try {
+            return Integer.parseInt(portValue.trim());
+        } catch (NumberFormatException ex) {
+            return DEFAULT_PORT;
         }
     }
 

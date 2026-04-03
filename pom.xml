@@ -47,7 +47,7 @@
                     </descriptorRefs>
                     <archive>
                         <manifest>
-                            <mainClass>com.example.chat.ChatApp</mainClass>
+                            <mainClass>com.example.chat.ChatServer</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

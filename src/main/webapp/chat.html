@@ -509,7 +509,7 @@
         <div class="message-feed" id="recentList"></div>
         <p class="status-line" id="recentStatus">Recent messages will appear here.</p>
         <form class="message-box" id="sendForm">
-            <input id="messageInput" type="text" placeholder="Write a message" autocomplete="off" required />
+            <input id="messageInput" type="text" placeholder="Write a message" autocomplete="off" />
             <button type="submit">Send</button>
         </form>
         <div class="attachment-row">
@@ -612,16 +612,16 @@
     sendForm.addEventListener('submit', async event => {
         event.preventDefault();
         const text = messageInput.value.trim();
-        if (!text) {
-            sendFeedback.textContent = 'Type something before sending.';
+        if (!text && !pendingMediaData) {
+            sendFeedback.textContent = 'Type something or attach media before sending.';
             return;
         }
         sendFeedback.textContent = 'Sending…';
         try {
-            const latestConversation = await sendMessage(text);
+            await sendMessage(text);
             messageInput.value = '';
             sendFeedback.textContent = 'Message delivered.';
-            renderMessages(recentList, latestConversation);
+            await fetchRecent();
             refreshOwnPosts();
             refreshContacts();
         } catch (error) {
@@ -1014,6 +1014,14 @@
             }
         };
         jitsiApi = new JitsiMeetExternalAPI(domain, options);
+
+        jitsiApi.addListener('readyToClose', () => {
+            if (jitsiApi) {
+                jitsiApi.dispose();
+                jitsiApi = null;
+            }
+            callOverlay.classList.remove('active');
+        });
     });
 
     endCallBtn.addEventListener('click', () => {

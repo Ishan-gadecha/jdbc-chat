@@ -180,11 +180,11 @@ public class ChatServlet extends HttpServlet {
 
     private Body readBody(HttpServletRequest request) throws IOException {
         StringBuilder builder = new StringBuilder();
-        byte[] buffer = new byte[1024];
+        char[] buffer = new char[1024];
         int read;
-        try (var input = request.getInputStream()) {
-            while ((read = input.read(buffer)) != -1) {
-                builder.append(new String(buffer, 0, read, StandardCharsets.UTF_8));
+        try (var reader = new java.io.InputStreamReader(request.getInputStream(), StandardCharsets.UTF_8)) {
+            while ((read = reader.read(buffer)) != -1) {
+                builder.append(buffer, 0, read);
             }
         }
         return Body.fromJson(builder.toString());

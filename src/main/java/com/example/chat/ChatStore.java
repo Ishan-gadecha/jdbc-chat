@@ -101,8 +101,8 @@ public final class ChatStore {
         }
 
         String normalizedText = normalize(text);
-        if (normalizedText.isEmpty()) {
-            throw new IllegalArgumentException("Message text is required.");
+        if (normalizedText.isEmpty() && normalize(mediaData).isEmpty()) {
+            throw new IllegalArgumentException("Message text or media is required.");
         }
 
         String normalizedRecipient = normalize(recipient);

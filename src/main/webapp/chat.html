@@ -344,18 +344,112 @@
             border-radius: 999px;
         }
 
+        .hamburger-btn {
+            display: none;
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+            margin-right: 0.8rem;
+        }
+        .call-btn {
+            background: linear-gradient(135deg, #00ff94, #00a3ff);
+            color: #04111d;
+            border: none;
+            border-radius: 999px;
+            padding: 0.5rem 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: transform 120ms ease;
+        }
+        .call-btn:active {
+            transform: scale(0.95);
+        }
+        .sidebar-backdrop {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            z-index: 90;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .sidebar-backdrop.open {
+            display: block;
+            opacity: 1;
+        }
+        #callOverlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #010409;
+            z-index: 200;
+            flex-direction: column;
+        }
+        #callOverlay.active {
+            display: flex;
+        }
+        .call-header {
+            padding: 1rem;
+            background: #0b121b;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .call-header button {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 999px;
+            padding: 0.5rem 1rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        #jitsiContainer {
+            flex: 1;
+            width: 100%;
+        }
+
         @media (max-width: 960px) {
             .app-shell {
                 grid-template-columns: 1fr;
             }
 
             .sidebar {
-                order: 2;
-                min-height: 0;
+                position: fixed;
+                top: 0;
+                left: -100%;
+                bottom: 0;
+                width: 320px;
+                max-width: 85vw;
+                z-index: 100;
+                transition: left 0.3s ease;
+                overflow-y: auto;
+            }
+
+            .sidebar.open {
+                left: 0;
             }
 
             .chat-shell {
                 order: 1;
+            }
+
+            .hamburger-btn {
+                display: block;
             }
 
             .message {
@@ -365,6 +459,7 @@
     </style>
 </head>
 <body>
+<div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 <div class="app-shell">
     <aside class="sidebar">
         <div class="brand-bar">
@@ -402,10 +497,14 @@
     </aside>
     <section class="chat-shell">
         <header class="chat-header">
-            <div>
-                <p class="chat-title" id="chatTitle">ShipLink Chat</p>
-                <p class="chat-subtitle" id="chatStatus">Connected</p>
+            <div style="display: flex; align-items: center;">
+                <button class="hamburger-btn" id="hamburgerBtn">☰</button>
+                <div>
+                    <p class="chat-title" id="chatTitle">ShipLink Chat</p>
+                    <p class="chat-subtitle" id="chatStatus">Connected</p>
+                </div>
             </div>
+            <button class="call-btn" id="startCallBtn" style="display: none;">📞 Call</button>
         </header>
         <div class="message-feed" id="recentList"></div>
         <p class="status-line" id="recentStatus">Recent messages will appear here.</p>
@@ -421,6 +520,16 @@
         <p class="message-feedback" id="sendFeedback"></p>
     </section>
 </div>
+
+<div id="callOverlay">
+    <div class="call-header">
+        <h3 style="margin:0;">Active Call</h3>
+        <button id="endCallBtn">End Call</button>
+    </div>
+    <div id="jitsiContainer"></div>
+</div>
+
+<script src="https://meet.jit.si/external_api.js"></script>
 <script>
     function clearAuthStorage() {
         sessionStorage.removeItem('handle');
@@ -663,6 +772,18 @@
         conversationGeneration += 1;
         selectedContact = contact;
         chatStatus.textContent = `Now chatting with ${selectedContact}`;
+
+        const startCallBtn = document.getElementById('startCallBtn');
+        if (startCallBtn) {
+            startCallBtn.style.display = 'flex';
+        }
+
+        const sidebar = document.querySelector('.sidebar');
+        const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+        if (sidebar && sidebarBackdrop) {
+            sidebar.classList.remove('open');
+            sidebarBackdrop.classList.remove('open');
+        }
     }
 
     async function refreshOwnPosts() {
@@ -843,6 +964,62 @@
             conversationRefreshInFlight = false;
         }
     }
+
+    // Sidebar logic
+    const hamburgerBtn = document.getElementById('hamburgerBtn');
+    const sidebar = document.querySelector('.sidebar');
+    const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+
+    function toggleSidebar() {
+        sidebar.classList.toggle('open');
+        sidebarBackdrop.classList.toggle('open');
+    }
+
+    hamburgerBtn.addEventListener('click', toggleSidebar);
+    sidebarBackdrop.addEventListener('click', toggleSidebar);
+
+    // Call logic
+    const startCallBtn = document.getElementById('startCallBtn');
+    const endCallBtn = document.getElementById('endCallBtn');
+    const callOverlay = document.getElementById('callOverlay');
+    const jitsiContainer = document.getElementById('jitsiContainer');
+    let jitsiApi = null;
+
+    startCallBtn.addEventListener('click', () => {
+        if (!selectedContact) return;
+        callOverlay.classList.add('active');
+
+        // Generate a deterministic room name based on the two users
+        const roomUsers = [handle, selectedContact].sort();
+        const roomName = 'ShipLink_' + roomUsers.join('_');
+
+        const domain = 'meet.jit.si';
+        const options = {
+            roomName: roomName,
+            width: '100%',
+            height: '100%',
+            parentNode: jitsiContainer,
+            userInfo: {
+                displayName: handle
+            },
+            configOverwrite: {
+                startWithAudioMuted: false,
+                startWithVideoMuted: false
+            },
+            interfaceConfigOverwrite: {
+                DISABLE_DOMINANT_SPEAKER_INDICATOR: true
+            }
+        };
+        jitsiApi = new JitsiMeetExternalAPI(domain, options);
+    });
+
+    endCallBtn.addEventListener('click', () => {
+        if (jitsiApi) {
+            jitsiApi.dispose();
+            jitsiApi = null;
+        }
+        callOverlay.classList.remove('active');
+    });
 
     // Load initial data
     refreshContacts();

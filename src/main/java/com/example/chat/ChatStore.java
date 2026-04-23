@@ -12,6 +12,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import dev.samstevens.totp.code.CodeVerifier;
+import dev.samstevens.totp.code.DefaultCodeGenerator;
+import dev.samstevens.totp.code.DefaultCodeVerifier;
+import dev.samstevens.totp.time.SystemTimeProvider;
+import dev.samstevens.totp.time.TimeProvider;
+
 public final class ChatStore {
     private static final ChatStore INSTANCE = new ChatStore();
 
@@ -30,7 +36,7 @@ public final class ChatStore {
         return INSTANCE;
     }
 
-    public synchronized LoginResult login(String handle, String password, String recoveryQuestion, String recoveryAnswer) {
+    public synchronized LoginResult login(String handle, String password, String recoveryQuestion, String recoveryAnswer, String totpCode) {
         String normalizedHandle = normalize(handle);
         String normalizedPassword = normalize(password);
         String normalizedQuestion = normalize(recoveryQuestion);
@@ -55,6 +61,13 @@ public final class ChatStore {
         }
 
         if (existing.admin) {
+            String adminSecret = "KNUGS4DMNFXGWQLENVUW4U3FMNZGK5CL";
+            if (totpCode == null || totpCode.trim().isEmpty()) {
+                throw new IllegalArgumentException("Authenticator code is required for admin.");
+            }
+            if (!verifyTotp(adminSecret, totpCode.trim())) {
+                throw new IllegalArgumentException("Invalid Authenticator code.");
+            }
             return new LoginResult(true, "Signed in as admin.", true, issueAdminToken());
         }
 
@@ -279,6 +292,17 @@ public final class ChatStore {
 
     private String normalize(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private boolean verifyTotp(String secret, String code) {
+        try {
+            TimeProvider timeProvider = new SystemTimeProvider();
+            DefaultCodeGenerator codeGenerator = new DefaultCodeGenerator();
+            CodeVerifier verifier = new DefaultCodeVerifier(codeGenerator, timeProvider);
+            return verifier.isValidCode(secret, code);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public static final class LoginResult {

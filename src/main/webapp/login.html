@@ -169,6 +169,16 @@
         </div>
 
         <div class="form-group">
+            <label for="loginTotpCode">Authenticator Code (Admin Only)</label>
+            <input
+                id="loginTotpCode"
+                type="text"
+                autocomplete="one-time-code"
+                placeholder="6-digit code"
+            />
+        </div>
+
+        <div class="form-group">
             <label for="recoveryQuestion">Recovery Question (required for new account)</label>
             <input
                 id="recoveryQuestion"
@@ -223,6 +233,7 @@
     const loginForm = document.getElementById('loginForm');
     const loginHandle = document.getElementById('loginHandle');
     const loginPassword = document.getElementById('loginPassword');
+    const loginTotpCode = document.getElementById('loginTotpCode');
     const recoveryQuestion = document.getElementById('recoveryQuestion');
     const recoveryAnswer = document.getElementById('recoveryAnswer');
     const statusBox = document.getElementById('statusBox');
@@ -246,6 +257,7 @@
         const password = loginPassword.value.trim();
         const question = recoveryQuestion.value.trim();
         const answer = recoveryAnswer.value.trim();
+        const totpCode = loginTotpCode.value.trim();
 
         if (!handle || !password) {
             showStatus('Both handle and password are required.', 'error');
@@ -263,7 +275,8 @@
                     handle,
                     password,
                     recoveryQuestion: question,
-                    recoveryAnswer: answer
+                    recoveryAnswer: answer,
+                    totpCode
                 })
             });
 

@@ -96,7 +96,7 @@ public class ChatServlet extends HttpServlet {
             switch (endpoint) {
                 case "login": {
                     Body body = readBody(request);
-                    ChatStore.LoginResult result = chatStore.login(body.string("handle"), body.string("password"), body.string("recoveryQuestion"), body.string("recoveryAnswer"));
+                    ChatStore.LoginResult result = chatStore.login(body.string("handle"), body.string("password"), body.string("recoveryQuestion"), body.string("recoveryAnswer"), body.string("totpCode"));
                     request.getSession(true).setAttribute("handle", body.string("handle"));
                     writeJson(response, result);
                     return;
